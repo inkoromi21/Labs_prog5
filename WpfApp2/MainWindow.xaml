@@ -1,0 +1,77 @@
+<Window x:Class="WpfApp2.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="лаба 4" Height="760" Width="1200"
+    MinHeight="580" MinWidth="850" WindowStartupLocation="CenterScreen"
+    Background="#F3F6FA">
+  <Grid Margin="14">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="320"/>
+      <ColumnDefinition Width="14"/>
+      <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
+
+    <Border Grid.Column="0" BorderBrush="#D5DDE7" BorderThickness="1"
+        CornerRadius="8" Background="#F7FAFE">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="18">
+          <TextBlock Text="Корень, минимум и максимум" FontSize="19" FontWeight="SemiBold"
+               TextWrapping="Wrap" Margin="0,0,0,4"/>
+          <TextBlock Text="Метод Ньютона" Foreground="#526276" Margin="0,0,0,22"/>
+
+          <TextBlock Text="Левая граница a" Margin="0,0,0,5"/>
+          <TextBox x:Name="aText" Text="0" Padding="8,6" Margin="0,0,0,14"
+              TextChanged="onInputChanged"/>
+
+          <TextBlock Text="Правая граница b" Margin="0,0,0,5"/>
+          <TextBox x:Name="bText" Text="2" Padding="8,6" Margin="0,0,0,14"
+              TextChanged="onInputChanged"/>
+
+          <TextBlock Text="Знаков после запятой" Margin="0,0,0,5"/>
+          <TextBox x:Name="digitsText" Text="3" Padding="8,6" Margin="0,0,0,14"
+              TextChanged="onInputChanged"/>
+
+          <TextBlock Text="Функция f(x)" Margin="0,0,0,5"/>
+          <TextBox x:Name="formulaText" Text="x^2+2*x-6" Padding="8,6"
+              Margin="0,0,0,14" TextChanged="onInputChanged"/>
+
+          <TextBlock Text="Что найти" Margin="0,0,0,5"/>
+          <ComboBox x:Name="modeBox" SelectedIndex="0" Padding="8,6" Margin="0,0,0,20"
+               SelectionChanged="onModeChanged">
+            <ComboBoxItem Content="Корень"/>
+            <ComboBoxItem Content="Минимум"/>
+            <ComboBoxItem Content="Максимум"/>
+          </ComboBox>
+
+          <Button x:Name="plotButton" Content="Построить график" Click="onPlotClick"
+              Padding="8,10" Margin="0,0,0,8" FontWeight="SemiBold"/>
+          <Button x:Name="solveButton" Content="Найти корень" Click="onSolveClick"
+              Padding="8,10" Margin="0,0,0,8" FontWeight="SemiBold"/>
+          <Grid Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="8"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" x:Name="clearButton" Content="Очистить"
+                Click="onClearClick" Padding="6,7"/>
+            <Button Grid.Column="2" x:Name="cancelButton" Content="Отменить"
+                IsEnabled="False" Click="onCancelClick" Padding="6,7"/>
+          </Grid>
+
+          <Separator Margin="0,0,0,16"/>
+          <TextBlock Text="Ответ" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+          <TextBlock x:Name="resultText" FontSize="16" FontWeight="SemiBold"
+               TextWrapping="Wrap" Margin="0,0,0,10"/>
+          <TextBlock x:Name="statusText" Text="Введите данные и выберите действие. Для графика нужен интернет."
+               TextWrapping="Wrap" Foreground="#334155"/>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <Border Grid.Column="2" BorderBrush="#D5DDE7" BorderThickness="1"
+        CornerRadius="8" Background="White" ClipToBounds="True">
+      <Image x:Name="plotImage" Margin="6" Stretch="Uniform"/>
+    </Border>
+  </Grid>
+</Window>
