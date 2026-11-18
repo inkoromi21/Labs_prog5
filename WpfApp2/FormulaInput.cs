@@ -14,10 +14,15 @@ public static class FormulaInput {
     ["ln"] = "ln",
     ["log"] = "log",
     ["exp"] = "exp",
-    ["abs"] = "abs"
+    ["abs"] = "abs",
+    ["atan"] = "atan",
+    ["arctan"] = "atan",
+    ["tanh"] = "tanh",
+    ["sign"] = "sign"
   };
 
   /// <summary>Проверяет запись формулы, числа, скобки и названия функций.</summary>
+
   public static string normalize(string source) {
     if (string.IsNullOrWhiteSpace(source)) {
       throw new InputException("Введите формулу f(x).");
@@ -87,6 +92,9 @@ public static class FormulaInput {
             out double value) || !double.IsFinite(value)) {
           throw new InputException("В формуле есть недопустимое число.");
         }
+        if (value == 0 && number.Split('e', 'E')[0].Any(c => c is >= '1' and <= '9')) {
+          throw new InputException("Число в формуле слишком мало для машинной точности.");
+        }
 
         result.Append(value.ToString("G17", CultureInfo.InvariantCulture));
         expectValue = false;
@@ -129,7 +137,8 @@ public static class FormulaInput {
           expectValue = true;
           continue;
         } else {
-          throw new InputException($"«{name}» не поддерживается.");
+          throw new InputException($"«{name}» не поддерживается. "
+              + "Доступны sin, cos, tan, atan (arctan), tanh, sqrt, ln, log, exp, abs, sign.");
         }
 
         expectValue = false;
@@ -193,7 +202,8 @@ public static class FormulaInput {
     return c is >= 'a' and <= 'z' or >= 'A' and <= 'Z';
   }
 
-  /// <summary>Разбирает проверенную строку в функцию evaluate(x).</summary>
+  /// <summary>Разбирает проверенную строку в дерево математических операций.</summary>
+
   public static CompiledFormula compile(string source) {
     string expression = normalize(source);
     return new CompiledFormula(expression, new Parser(expression).parse());
@@ -203,7 +213,7 @@ public static class FormulaInput {
   private sealed class Parser(string source) {
     private int position;
 
-    public Func<double, double> parse() {
+    public FormulaNode parse() {
       var formula = addSubtract();
       skipSpaces();
       if (position != source.Length) {
@@ -213,64 +223,64 @@ public static class FormulaInput {
       return formula;
     }
 
-    private Func<double, double> addSubtract() {
+    private FormulaNode addSubtract() {
       var left = multiplyDivide();
       while (true) {
         if (take('+')) {
           var previous = left;
           var right = multiplyDivide();
-          left = x => previous(x) + right(x);
+          left = new("+", previous, right);
         } else if (take('-')) {
           var previous = left;
           var right = multiplyDivide();
-          left = x => previous(x) - right(x);
+          left = new("-", previous, right);
         } else {
           return left;
         }
       }
     }
 
-    private Func<double, double> multiplyDivide() {
+    private FormulaNode multiplyDivide() {
       var left = unary();
       while (true) {
         if (take('*')) {
           var previous = left;
           var right = unary();
-          left = x => previous(x) * right(x);
+          left = new("*", previous, right);
         } else if (take('/')) {
           var previous = left;
           var right = unary();
-          left = x => previous(x) / right(x);
+          left = new("/", previous, right);
         } else {
           return left;
         }
       }
     }
 
-    private Func<double, double> unary() {
+    private FormulaNode unary() {
       if (take('+')) {
         return unary();
       }
 
       if (take('-')) {
         var operand = unary();
-        return x => -operand(x);
+        return new("neg", operand);
       }
 
       return power();
     }
 
-    private Func<double, double> power() {
+    private FormulaNode power() {
       var left = primary();
       if (!take('^')) {
         return left;
       }
 
       var right = unary();
-      return x => Math.Pow(left(x), right(x));
+      return new("^", left, right);
     }
 
-    private Func<double, double> primary() {
+    private FormulaNode primary() {
       skipSpaces();
       if (take('(')) {
         var inside = addSubtract();
@@ -307,7 +317,7 @@ public static class FormulaInput {
           throw new InputException("Неверная запись числа в формуле.");
         }
 
-        return _ => number;
+        return new("number", number: number);
       }
 
       if (position < source.Length && isLetter(source[position])) {
@@ -318,31 +328,21 @@ public static class FormulaInput {
 
         string name = source[start..position];
         if (name == "x") {
-          return x => x;
+          return new("x");
         }
 
         if (name == "pi") {
-          return _ => Math.PI;
+          return new("pi");
         }
 
         if (name == "e") {
-          return _ => Math.E;
+          return new("e");
         }
 
         expect('(');
         var argument = addSubtract();
         expect(')');
-        return name switch {
-          "sin" => x => Math.Sin(argument(x)),
-          "cos" => x => Math.Cos(argument(x)),
-          "tan" => x => Math.Tan(argument(x)),
-          "sqrt" => x => Math.Sqrt(argument(x)),
-          "ln" => x => Math.Log(argument(x)),
-          "log" => x => Math.Log10(argument(x)),
-          "exp" => x => Math.Exp(argument(x)),
-          "abs" => x => Math.Abs(argument(x)),
-          _ => throw new InputException($"Неизвестная функция «{name}».")
-        };
+        return new(name, argument);
       }
 
       throw new InputException("Проверьте формулу и скобки.");
