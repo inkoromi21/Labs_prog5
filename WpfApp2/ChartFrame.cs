@@ -7,18 +7,12 @@ using System.Xml.Linq;
 
 namespace WpfApp2;
 
-public sealed record ChartCurve(Geometry geometry, bool derivative);
-
 public sealed record ChartFrame(PlotViewport view, double width, double height,
-    IReadOnlyList<ChartCurve> curves, long bytes) {
+    IReadOnlyList<Geometry> curves, long bytes) {
   public string expression {
     get;
     init;
   } = "";
-  public bool includesDerivative {
-    get;
-    init;
-  }
 
   public static ChartFrame parse(byte[] svg, PlotViewport view) {
     try {
@@ -38,7 +32,7 @@ public sealed record ChartFrame(PlotViewport view, double width, double height,
           || box.Any(v => !double.IsFinite(v))) {
         throw new FormatException();
       }
-      var curves = new List<ChartCurve>();
+      var curves = new List<Geometry>();
       foreach (var path in root.Descendants().Where(e => e.Name.LocalName == "path")) {
         var style = (path.Attribute("style")?.Value ?? "").Split(';')
             .Select(s => s.Split(':', 2)).Where(p => p.Length == 2)
@@ -53,11 +47,9 @@ public sealed record ChartFrame(PlotViewport view, double width, double height,
         if (stroke.Contains('%')) {
           rgb = rgb.Select(v => v * 2.55).ToArray();
         }
-        bool derivative = Math.Abs(rgb[0] - 139) < 2 && Math.Abs(rgb[1] - 92) < 2
-            && Math.Abs(rgb[2] - 246) < 2;
         bool function = Math.Abs(rgb[0] - 37) < 2 && Math.Abs(rgb[1] - 99) < 2
             && Math.Abs(rgb[2] - 235) < 2;
-        if (!function && !derivative) {
+        if (!function) {
           throw new FormatException();
         }
         var geometry = Geometry.Parse(path.Attribute("d")?.Value ?? "").Clone();
@@ -77,7 +69,7 @@ public sealed record ChartFrame(PlotViewport view, double width, double height,
         matrix.Translate(-box[0], -box[1]);
         geometry.Transform = new MatrixTransform(matrix);
         geometry.Freeze();
-        curves.Add(new(geometry, derivative));
+        curves.Add(geometry);
       }
       return new(view, box[2], box[3], curves, svg.LongLength * 8);
     } catch (Exception error) when (error is XmlException or FormatException

@@ -71,24 +71,30 @@ public partial class MainWindow : Window {
       if (isClosed || !ReferenceEquals(operation, current)) {
         return;
       }
-      steps = result.steps;
+      steps = result.hasSolution ? result.steps : Array.Empty<NewtonStep>();
       statusText.Text = result.message;
       calculationError = "";
       updateErrors();
       resultText.Text = result.outcome switch {
         SearchOutcome.ROOT => $"Корень: x ≈ {formatResult(result.x, input.digits)}",
-        SearchOutcome.MINIMUM => $"Локальный минимум: ≈ {formatResult(result.y, input.digits)}",
-        SearchOutcome.MAXIMUM => $"Локальный максимум: ≈ {formatResult(result.y, input.digits)}",
+        SearchOutcome.MINIMUM or SearchOutcome.MAXIMUM =>
+            $"{extremumTitle(result)}: x ≈ {formatResult(result.x, input.digits)}",
+        SearchOutcome.MULTIPLE_ROOTS => "Обнаружено несколько корней",
+        SearchOutcome.MULTIPLE_EXTREMA => input.mode == SearchMode.MINIMUM
+            ? "Обнаружено несколько минимумов" : "Обнаружено несколько максимумов",
+        SearchOutcome.NO_ROOTS => "Корней на интервале не обнаружено",
+        SearchOutcome.NO_EXTREMUM => input.mode == SearchMode.MINIMUM
+            ? "Внутренний минимум не найден" : "Внутренний максимум не найден",
         SearchOutcome.STATIONARY =>
             $"Стационарная точка: x ≈ {formatResult(result.x, input.digits)}",
         _ => "Метод остановлен"
       };
-      resultText.ToolTip = steps.Count > 0
-          ? $"Последнее приближение: x ≈ {result.x:G17}; f(x) ≈ {result.y:G17}"
+      resultText.ToolTip = double.IsFinite(result.x)
+          ? $"Последнее приближение: x ≈ {result.x:G17}"
           : null;
-      plotSurface.setSearch(input, steps);
+      plotSurface.setSearch(input, result);
       emptyPlotText.Visibility = Visibility.Collapsed;
-      showStep(steps.Count > 0 ? 0 : -1);
+      showStep(steps.Count - 1);
     } catch (Exception error) {
       if (!isClosed && ReferenceEquals(operation, current)) {
         if (resultText.Text.Length == 0) {
@@ -136,7 +142,6 @@ public partial class MainWindow : Window {
     var input = plotSurface.input;
     // SVG strokes need no pixel-density test; the 2048 segments still need refinement.
     return input is not null && frame.expression == input.formula.expression
-        && frame.includesDerivative == (input.mode != SearchMode.ROOT)
         && frame.view.contains(view)
         && (frame.view.right - frame.view.left) / 2048
             <= (view.right - view.left) / Math.Max(1, plotSurface.plotArea.Width) * 2;
@@ -193,8 +198,7 @@ public partial class MainWindow : Window {
     try {
       byte[] svg = await charts.renderAsync(input, bounds, width, height, current.Token);
       var frame = await Task.Run(() => ChartFrame.parse(svg, bounds) with {
-        expression = input.formula.expression,
-        includesDerivative = input.mode != SearchMode.ROOT
+        expression = input.formula.expression
       }, current.Token);
       current.Token.ThrowIfCancellationRequested();
       if (isClosed || !ReferenceEquals(graphOperation, current)
@@ -238,14 +242,15 @@ public partial class MainWindow : Window {
   private void showStep(int target) {
     selectedStep = steps.Count > 0 ? Math.Clamp(target, 0, steps.Count - 1) : -1;
     plotSurface.showStep(selectedStep);
-    stepText.Text = selectedStep >= 0 ? steps.Count == 1 ? "Начальная / конечная точка"
-        : $"Шаг {selectedStep} из {steps.Count - 1}" : "Шаг —";
+    stepText.Text = selectedStep < 0 ? "Шаг —"
+        : $"Шаг {selectedStep} из {steps.Count - 1}"
+            + (selectedStep == steps.Count - 1 ? " (итог)" : " (промежуточный)");
+    stepDetailText.Text = selectedStep >= 0 ? steps[selectedStep].note : "";
     stepText.ToolTip = null;
     if (selectedStep >= 0 && plotSurface.input is SearchInput input) {
       var p = steps[selectedStep];
-      var d = input.formula.derivatives(p.x);
       stepText.ToolTip =
-          $"x = {p.x:G17}\nf(x) = {p.y:G17}\nf′(x) = {d.first:G17}\nf″(x) = {d.second:G17}";
+          $"{p.note}\nx = {p.x:G17}";
     }
     updateNavigation();
   }
@@ -315,6 +320,7 @@ public partial class MainWindow : Window {
     updateErrors();
     emptyPlotText.Visibility = Visibility.Visible;
     stepText.Text = "Шаг —";
+    stepDetailText.Text = "";
     setBusy(false);
   }
 
@@ -354,7 +360,7 @@ public partial class MainWindow : Window {
     if (modeBox.SelectedIndex is < 0 or > 2) {
       throw new InputException("Выберите, что найти.");
     }
-    return new SearchInput(a, b, Math.Pow(10, -digits), digits, formula,
+    return new SearchInput(a, b, digits, formula,
             (SearchMode)modeBox.SelectedIndex);
   }
 
@@ -367,12 +373,19 @@ public partial class MainWindow : Window {
     return number;
   }
 
+  private static string extremumTitle(SearchResult result) {
+    // shortcut: these requested UI labels are not a mathematical proof of globality.
+    string scope = result.pointKind == SearchPointKind.BOUNDARY ? "Локальный" : "Глобальный";
+    return scope + (result.outcome == SearchOutcome.MINIMUM ? " минимум" : " максимум");
+  }
+
   private static string formatResult(double value, int digits) {
     if (value == Math.Truncate(value)) {
       return (value == 0 ? 0d : value).ToString("F0", CultureInfo.CurrentCulture);
     }
     double rounded = Math.Round(value, digits, MidpointRounding.AwayFromZero);
-    return rounded == 0 ? "0" : rounded.ToString("F" + digits, CultureInfo.CurrentCulture);
+    return rounded == 0 ? value.ToString("G" + Math.Max(1, digits), CultureInfo.CurrentCulture)
+        : rounded.ToString("F" + digits, CultureInfo.CurrentCulture);
   }
 
   private void updateErrors() => errorText.Text = string.Join("\n",

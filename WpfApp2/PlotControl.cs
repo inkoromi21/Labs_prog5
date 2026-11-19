@@ -9,13 +9,10 @@ namespace WpfApp2;
 public sealed class PlotControl : FrameworkElement {
   private static readonly Brush gray = new SolidColorBrush(Color.FromRgb(107, 114, 128));
   private static readonly Brush blue = new SolidColorBrush(Color.FromRgb(37, 99, 235));
-  private static readonly Brush purple = new SolidColorBrush(Color.FromRgb(139, 92, 246));
   private static readonly Brush red = new SolidColorBrush(Color.FromRgb(220, 38, 38));
   private static readonly Pen gridPen = pen(new SolidColorBrush(Color.FromRgb(229, 231, 235)), 1);
   private static readonly Pen axisPen = pen(gray, 1);
-  private static readonly Pen projectionPen = pen(gray, 1, true);
   private static readonly Pen tangentPen = pen(red, 1.5, true);
-  private static readonly Pen functionTangentPen = pen(Brushes.SeaGreen, 1.5, true);
   private static readonly Pen boundaryPen = pen(Brushes.Orange, 1, true);
   private Point? dragStart;
   private PlotViewport? dragView;
@@ -46,11 +43,11 @@ public sealed class PlotControl : FrameworkElement {
     };
   }
 
-  public void setSearch(SearchInput search, IReadOnlyList<NewtonStep> history) {
+  public void setSearch(SearchInput search, SearchResult result) {
     clear();
     input = search;
-    steps = history;
-    view = PlotViewport.fit(search, history);
+    steps = result.hasSolution ? result.steps : Array.Empty<NewtonStep>();
+    view = PlotViewport.fit(search, steps);
     InvalidateVisual();
   }
 
@@ -175,61 +172,19 @@ public sealed class PlotControl : FrameworkElement {
       dot(dc, steps[i].x, steps[i].y, gray, 3);
     }
     if (selected >= 0 && selected < steps.Count) {
-      int transition = Math.Min(selected, steps.Count - 2);
-      if (transition >= 0) {
-        var p = steps[transition];
-        var next = steps[transition + 1];
-        var d = input.formula.derivatives(p.x);
-        double y = input.mode == SearchMode.ROOT ? d.value : d.first;
-        double slope = input.mode == SearchMode.ROOT ? d.first : d.second;
-        if (double.IsFinite(y)) {
-          line(dc, projectionPen, p.x, 0, p.x, y);
-          if (double.IsFinite(slope)) {
-            line(dc, tangentPen, view.left, y + slope * (view.left - p.x),
-                view.right, y + slope * (view.right - p.x));
-          }
-          dot(dc, p.x, y, red, 4);
-          dot(dc, next.x, 0, red, 3);
-          if (input.mode != SearchMode.ROOT) {
-            line(dc, projectionPen, next.x, 0, next.x, next.y);
-          }
-        }
-      }
       var current = steps[selected];
-      if (input.mode != SearchMode.ROOT) {
-        double slope = input.formula.derivatives(current.x).first;
-        if (double.IsFinite(slope)) {
-          line(dc, functionTangentPen, view.left, current.y + slope * (view.left - current.x),
-              view.right, current.y + slope * (view.right - current.x));
-        }
+      double slope = input.formula.derivatives(current.x).first;
+      if (double.IsFinite(slope)) {
+        line(dc, tangentPen, view.left, current.y + slope * (view.left - current.x),
+            view.right, current.y + slope * (view.right - current.x));
       }
       dot(dc, current.x, current.y, red, 5);
     }
     dc.Pop();
     dc.DrawRectangle(null, gridPen, area);
     drawGrid(dc, labels, true);
-    if (selected >= 0 && selected < steps.Count) {
-      int transition = Math.Min(selected, steps.Count - 2);
-      if (transition >= 0) {
-        double x1 = steps[transition].x, x2 = steps[transition + 1].x;
-        addLabel(dc, labels, $"x{indexText(transition)}", point(x1, view.bottom).X,
-            area.Bottom + 29, red);
-        addLabel(dc, labels, $"x{indexText(transition + 1)}", point(x2, view.bottom).X,
-            area.Bottom + 29, red);
-      }
-    }
     drawText(dc, "x", new Point(area.Right + 8, area.Bottom - 8), gray);
     drawText(dc, "y", new Point(area.Left - 16, area.Top - 23), gray);
-    drawText(dc, "f(x)", new Point(area.Left + 8, 8), blue);
-    if (input.mode != SearchMode.ROOT) {
-      drawText(dc, "f′(x)", new Point(area.Left + 60, 8), purple);
-    }
-    if (steps.Count > 1) {
-      drawText(dc, "шаг Ньютона", new Point(area.Left + 120, 8), red);
-    }
-    if (input.mode != SearchMode.ROOT && selected >= 0) {
-      drawText(dc, "касательная к f", new Point(area.Left + 240, 8), Brushes.SeaGreen);
-    }
   }
 
   private void drawCurves(DrawingContext dc) {
@@ -255,13 +210,12 @@ public sealed class PlotControl : FrameworkElement {
     }
     dc.PushClip(new RectangleGeometry(new Rect(point(l, t), point(r, b))));
     foreach (var curve in frame.curves) {
-      var geometry = curve.geometry.Clone();
+      var geometry = curve.Clone();
       var transform = geometry.Transform.Value;
       transform.Append(matrix);
       geometry.Transform = new MatrixTransform(transform);
       // Transform the path, not the pen: its width stays in screen units at every zoom.
-      dc.DrawGeometry(null, pen(curve.derivative ? purple : blue,
-          curve.derivative ? 2.5 : 2, curve.derivative), geometry);
+      dc.DrawGeometry(null, pen(blue, 2), geometry);
     }
     dc.Pop();
   }
@@ -271,7 +225,7 @@ public sealed class PlotControl : FrameworkElement {
       return;
     }
     Rect area = plotArea;
-    foreach (double x in ticks(view.left, view.right, area.Width / 110)) {
+    foreach (double x in ticks(view.left, view.right, area.Width / (text ? 110 : 55))) {
       Point p = point(x, view.bottom);
       if (text) {
         addLabel(dc, labels, number(x, view.right - view.left), p.X, area.Bottom + 5, gray);
@@ -279,7 +233,7 @@ public sealed class PlotControl : FrameworkElement {
         line(dc, gridPen, x, view.bottom, x, view.top);
       }
     }
-    foreach (double y in ticks(view.bottom, view.top, area.Height / 48)) {
+    foreach (double y in ticks(view.bottom, view.top, area.Height / (text ? 48 : 24))) {
       Point p = point(view.left, y);
       if (text) {
         var label = formatted(number(y, view.top - view.bottom), gray);
@@ -367,9 +321,6 @@ public sealed class PlotControl : FrameworkElement {
     return (x == 0 ? 0d : x).ToString("G" + digits, CultureInfo.CurrentCulture);
   }
 
-  private static string indexText(int index) => string.Concat(index.ToString(
-      CultureInfo.InvariantCulture).Select(c => "₀₁₂₃₄₅₆₇₈₉"[c - '0']));
-
   private static IEnumerable<double> ticks(double min, double max, double count) {
     double raw = (max - min) / Math.Max(1, count);
     double power = Math.Pow(10, Math.Floor(Math.Log10(raw)));
@@ -381,7 +332,7 @@ public sealed class PlotControl : FrameworkElement {
       yield break;
     }
     double start = Math.Ceiling(min / step) * step;
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 1000; i++) {
       double value = start + i * step;
       if (!double.IsFinite(value) || value > max) {
         yield break;

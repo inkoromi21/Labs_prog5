@@ -8,7 +8,7 @@ public sealed record PlotViewport(double left, double right, double bottom, doub
   public static double?[] sample(CompiledFormula formula, double a, double b) {
     var values = new double?[257];
     for (int i = 0; i < values.Length; i++) {
-      double x = i == values.Length - 1 ? b : a + (b - a) * i / (values.Length - 1);
+      double x = i == values.Length - 1 ? b : a + (b - a) * (i / (double)(values.Length - 1));
       double y = formula.evaluate(x);
       values[i] = double.IsFinite(y) ? y : null;
     }
@@ -33,23 +33,9 @@ public sealed record PlotViewport(double left, double right, double bottom, doub
 
     double lower = Math.Min(0, values[(int)((values.Length - 1) * 0.05)]);
     double upper = Math.Max(0, values[(int)((values.Length - 1) * 0.95)]);
-    if (input.mode != SearchMode.ROOT) {
-      var slopes = Enumerable.Range(0, 257)
-          .Select(i => input.formula.derivatives(left + (right - left) * i / 256).first)
-          .Where(double.IsFinite).OrderBy(v => v).ToArray();
-      if (slopes.Length > 0) {
-        lower = Math.Min(lower, slopes[(int)((slopes.Length - 1) * 0.05)]);
-        upper = Math.Max(upper, slopes[(int)((slopes.Length - 1) * 0.95)]);
-      }
-    }
     foreach (var step in steps) {
       lower = Math.Min(lower, step.y);
       upper = Math.Max(upper, step.y);
-      double target = input.formula.derivatives(step.x).first;
-      if (input.mode != SearchMode.ROOT && double.IsFinite(target)) {
-        lower = Math.Min(lower, target);
-        upper = Math.Max(upper, target);
-      }
     }
 
     double padding = upper > lower ? (upper - lower) * 0.1

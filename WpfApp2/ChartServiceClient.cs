@@ -15,7 +15,8 @@ public sealed class ChartServiceClient {
   }
 
   public async Task<byte[]> renderAsync(SearchInput input, PlotViewport view,
-      int width, int height, CancellationToken cancellationToken, double lineWidth = 2) {
+      int width, int height, CancellationToken cancellationToken,
+      double lineWidth = 2) {
     var chart = await Task.Run(() => buildChart(input, view, lineWidth, cancellationToken),
         cancellationToken);
     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -83,39 +84,36 @@ public sealed class ChartServiceClient {
     var datasets = new List<object>();
     double cutoff = Math.Max(Math.Abs(view.bottom), Math.Abs(view.top));
     cutoff = cutoff < double.MaxValue / 8 ? Math.Max(cutoff * 8, 1) : double.MaxValue;
-    for (int curve = 0; curve < (input.mode == SearchMode.ROOT ? 1 : 2); curve++) {
-      var points = new List<object>();
-      double previousX = view.left;
-      for (int i = 0; i <= 2048; i++) {
-        token.ThrowIfCancellationRequested();
-        double x = i == 2048 ? view.right : view.left + (view.right - view.left) * i / 2048;
-        var d = input.formula.derivatives(x);
-        double y = curve == 0 ? d.value : d.first;
-        bool continuous = i == 0 || input.formula.enclose(previousX, x).valid;
-        if (!continuous) {
-          points.Add(new {
-            x,
-            y = (double?)null
-          });
-        }
+    var points = new List<object>();
+    double previousX = view.left;
+    for (int i = 0; i <= 2048; i++) {
+      token.ThrowIfCancellationRequested();
+      double x = i == 2048 ? view.right : view.left + (view.right - view.left) * (i / 2048d);
+      var d = input.formula.derivatives(x);
+      double y = d.value;
+      bool continuous = i == 0 || input.formula.enclose(previousX, x).valid;
+      if (!continuous) {
         points.Add(new {
           x,
-          y = double.IsFinite(y) && Math.Abs(y) <= cutoff ? (double?)y : null
+          y = (double?)null
         });
-        previousX = x;
       }
-      datasets.Add(new {
-        data = points,
-        showLine = true,
-        fill = false,
-        pointRadius = 0,
-        borderColor = curve == 0 ? "#2563EB" : "#8B5CF6",
-        borderWidth = lineWidth * (curve == 0 ? 1 : 1.25),
-        borderDash = curve == 0 ? Array.Empty<int>() : new[] { 6, 4 },
-        spanGaps = false,
-        tension = 0
+      points.Add(new {
+        x,
+        y = double.IsFinite(y) && Math.Abs(y) <= cutoff ? (double?)y : null
       });
+      previousX = x;
     }
+    datasets.Add(new {
+      data = points,
+      showLine = true,
+      fill = false,
+      pointRadius = 0,
+      borderColor = "#2563EB",
+      borderWidth = lineWidth,
+      spanGaps = false,
+      tension = 0
+    });
     return new {
       type = "scatter",
       data = new {
