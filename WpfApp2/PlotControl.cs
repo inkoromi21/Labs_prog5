@@ -10,14 +10,18 @@ public sealed class PlotControl : FrameworkElement {
   private static readonly Brush gray = new SolidColorBrush(Color.FromRgb(107, 114, 128));
   private static readonly Brush blue = new SolidColorBrush(Color.FromRgb(37, 99, 235));
   private static readonly Brush red = new SolidColorBrush(Color.FromRgb(220, 38, 38));
+  private static readonly Brush teal = new SolidColorBrush(Color.FromRgb(13, 148, 136));
   private static readonly Pen gridPen = pen(new SolidColorBrush(Color.FromRgb(229, 231, 235)), 1);
   private static readonly Pen axisPen = pen(gray, 1);
   private static readonly Pen tangentPen = pen(red, 1.5, true);
+  private static readonly Pen projectionPen = pen(teal, 1.5, true);
   private static readonly Pen boundaryPen = pen(Brushes.Orange, 1, true);
   private Point? dragStart;
   private PlotViewport? dragView;
+  private PlotViewport? requestedView;
   private ChartFrame? frame;
   private IReadOnlyList<NewtonStep> steps = Array.Empty<NewtonStep>();
+  private Point? answerPoint;
   private int selected = -1;
   public SearchInput? input {
     get;
@@ -38,16 +42,25 @@ public sealed class PlotControl : FrameworkElement {
     Cursor = Cursors.Hand;
     RenderOptions.SetBitmapScalingMode(this, BitmapScalingMode.Linear);
     SizeChanged += (_, _) => {
+      Rect area = plotArea;
+      view = requestedView?.withEqualScale(area.Width, area.Height);
       InvalidateVisual();
       viewChanged?.Invoke(this, EventArgs.Empty);
     };
   }
 
   public void setSearch(SearchInput search, SearchResult result) {
+    var visible = result.visibleSteps;
+    bool showAnswerPoint = result.hasSolution && !result.usesTangents;
+    var fitted = PlotViewport.fit(search,
+        showAnswerPoint ? [new NewtonStep(result.x, result.y)] : visible);
     clear();
     input = search;
-    steps = result.hasSolution ? result.steps : Array.Empty<NewtonStep>();
-    view = PlotViewport.fit(search, steps);
+    steps = visible;
+    requestedView = fitted;
+    Rect area = plotArea;
+    view = fitted.withEqualScale(area.Width, area.Height);
+    answerPoint = showAnswerPoint ? new Point(result.x, result.y) : null;
     InvalidateVisual();
   }
 
@@ -67,8 +80,10 @@ public sealed class PlotControl : FrameworkElement {
     dragView = null;
     Cursor = Cursors.Hand;
     input = null;
+    requestedView = null;
     view = null;
     frame = null;
+    answerPoint = null;
     steps = Array.Empty<NewtonStep>();
     selected = -1;
     InvalidateVisual();
@@ -84,6 +99,7 @@ public sealed class PlotControl : FrameworkElement {
     if (next == view) {
       return;
     }
+    requestedView = next;
     view = next;
     InvalidateVisual();
     viewChanged?.Invoke(this, EventArgs.Empty);
@@ -178,7 +194,20 @@ public sealed class PlotControl : FrameworkElement {
         line(dc, tangentPen, view.left, current.y + slope * (view.left - current.x),
             view.right, current.y + slope * (view.right - current.x));
       }
+      if (steps.Count > 1) {
+        int nextIndex = Math.Min(selected + 1, steps.Count - 1);
+        var next = steps[nextIndex];
+        line(dc, projectionPen, next.x, 0, next.x, next.y);
+        for (int i = 1; i <= nextIndex; i++) {
+          dot(dc, steps[i].x, 0, teal, i == nextIndex ? 4 : 2);
+        }
+        if (selected < nextIndex) {
+          dot(dc, next.x, next.y, teal, 3);
+        }
+      }
       dot(dc, current.x, current.y, red, 5);
+    } else if (answerPoint is Point answer) {
+      dot(dc, answer.X, answer.Y, red, 5);
     }
     dc.Pop();
     dc.DrawRectangle(null, gridPen, area);
@@ -225,7 +254,8 @@ public sealed class PlotControl : FrameworkElement {
       return;
     }
     Rect area = plotArea;
-    foreach (double x in ticks(view.left, view.right, area.Width / (text ? 110 : 55))) {
+    double rawStep = (view.right - view.left) / Math.Max(1, area.Width / 90);
+    foreach (double x in ticks(view.left, view.right, rawStep)) {
       Point p = point(x, view.bottom);
       if (text) {
         addLabel(dc, labels, number(x, view.right - view.left), p.X, area.Bottom + 5, gray);
@@ -233,7 +263,7 @@ public sealed class PlotControl : FrameworkElement {
         line(dc, gridPen, x, view.bottom, x, view.top);
       }
     }
-    foreach (double y in ticks(view.bottom, view.top, area.Height / (text ? 48 : 24))) {
+    foreach (double y in ticks(view.bottom, view.top, rawStep)) {
       Point p = point(view.left, y);
       if (text) {
         var label = formatted(number(y, view.top - view.bottom), gray);
@@ -321,13 +351,12 @@ public sealed class PlotControl : FrameworkElement {
     return (x == 0 ? 0d : x).ToString("G" + digits, CultureInfo.CurrentCulture);
   }
 
-  private static IEnumerable<double> ticks(double min, double max, double count) {
-    double raw = (max - min) / Math.Max(1, count);
-    double power = Math.Pow(10, Math.Floor(Math.Log10(raw)));
+  private static IEnumerable<double> ticks(double min, double max, double rawStep) {
+    double power = Math.Pow(10, Math.Floor(Math.Log10(rawStep)));
     if (!double.IsFinite(power) || power == 0) {
       yield break;
     }
-    double step = new[] { 1d, 2d, 5d, 10d }.Select(n => n * power).FirstOrDefault(n => n >= raw);
+    double step = new[] { 1d, 2d, 5d, 10d }.Select(n => n * power).FirstOrDefault(n => n >= rawStep);
     if (!double.IsFinite(step) || step <= 0) {
       yield break;
     }

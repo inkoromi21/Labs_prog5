@@ -71,7 +71,7 @@ public partial class MainWindow : Window {
       if (isClosed || !ReferenceEquals(operation, current)) {
         return;
       }
-      steps = result.hasSolution ? result.steps : Array.Empty<NewtonStep>();
+      steps = result.visibleSteps;
       statusText.Text = result.message;
       calculationError = "";
       updateErrors();
@@ -79,19 +79,8 @@ public partial class MainWindow : Window {
         SearchOutcome.ROOT => $"Корень: x ≈ {formatResult(result.x, input.digits)}",
         SearchOutcome.MINIMUM or SearchOutcome.MAXIMUM =>
             $"{extremumTitle(result)}: x ≈ {formatResult(result.x, input.digits)}",
-        SearchOutcome.MULTIPLE_ROOTS => "Обнаружено несколько корней",
-        SearchOutcome.MULTIPLE_EXTREMA => input.mode == SearchMode.MINIMUM
-            ? "Обнаружено несколько минимумов" : "Обнаружено несколько максимумов",
-        SearchOutcome.NO_ROOTS => "Корней на интервале не обнаружено",
-        SearchOutcome.NO_EXTREMUM => input.mode == SearchMode.MINIMUM
-            ? "Внутренний минимум не найден" : "Внутренний максимум не найден",
-        SearchOutcome.STATIONARY =>
-            $"Стационарная точка: x ≈ {formatResult(result.x, input.digits)}",
-        _ => "Метод остановлен"
+        _ => "Не могу найти"
       };
-      resultText.ToolTip = double.IsFinite(result.x)
-          ? $"Последнее приближение: x ≈ {result.x:G17}"
-          : null;
       plotSurface.setSearch(input, result);
       emptyPlotText.Visibility = Visibility.Collapsed;
       showStep(steps.Count - 1);
@@ -209,9 +198,9 @@ public partial class MainWindow : Window {
       while (frames.Sum(f => f.bytes) > 64L * 1024 * 1024) {
         frames.RemoveLast();
       }
-      graphError = "";
-      updateErrors();
       if (viewVersion == version) {
+        graphError = "";
+        updateErrors();
         plotSurface.setFrame(frame);
       }
     } catch (OperationCanceledException) when (current.IsCancellationRequested) {
@@ -242,16 +231,7 @@ public partial class MainWindow : Window {
   private void showStep(int target) {
     selectedStep = steps.Count > 0 ? Math.Clamp(target, 0, steps.Count - 1) : -1;
     plotSurface.showStep(selectedStep);
-    stepText.Text = selectedStep < 0 ? "Шаг —"
-        : $"Шаг {selectedStep} из {steps.Count - 1}"
-            + (selectedStep == steps.Count - 1 ? " (итог)" : " (промежуточный)");
-    stepDetailText.Text = selectedStep >= 0 ? steps[selectedStep].note : "";
-    stepText.ToolTip = null;
-    if (selectedStep >= 0 && plotSurface.input is SearchInput input) {
-      var p = steps[selectedStep];
-      stepText.ToolTip =
-          $"{p.note}\nx = {p.x:G17}";
-    }
+    stepText.Text = selectedStep < 0 ? "Шаг —" : $"Шаг {selectedStep} из {steps.Count - 1}";
     updateNavigation();
   }
 
@@ -316,11 +296,9 @@ public partial class MainWindow : Window {
     selectedStep = -1;
     calculationError = graphError = "";
     resultText.Text = statusText.Text = plotProgressText.Text = "";
-    resultText.ToolTip = null;
     updateErrors();
     emptyPlotText.Visibility = Visibility.Visible;
     stepText.Text = "Шаг —";
-    stepDetailText.Text = "";
     setBusy(false);
   }
 
@@ -360,8 +338,7 @@ public partial class MainWindow : Window {
     if (modeBox.SelectedIndex is < 0 or > 2) {
       throw new InputException("Выберите, что найти.");
     }
-    return new SearchInput(a, b, digits, formula,
-            (SearchMode)modeBox.SelectedIndex);
+    return new SearchInput(a, b, digits, formula, (SearchMode)modeBox.SelectedIndex);
   }
 
   private static double parseNumber(string value, string name) {
@@ -374,18 +351,20 @@ public partial class MainWindow : Window {
   }
 
   private static string extremumTitle(SearchResult result) {
-    // shortcut: these requested UI labels are not a mathematical proof of globality.
-    string scope = result.pointKind == SearchPointKind.BOUNDARY ? "Локальный" : "Глобальный";
-    return scope + (result.outcome == SearchOutcome.MINIMUM ? " минимум" : " максимум");
+    return result.outcome == SearchOutcome.MINIMUM ? "Локальный минимум" : "Локальный максимум";
   }
 
   private static string formatResult(double value, int digits) {
-    if (value == Math.Truncate(value)) {
-      return (value == 0 ? 0d : value).ToString("F0", CultureInfo.CurrentCulture);
-    }
     double rounded = Math.Round(value, digits, MidpointRounding.AwayFromZero);
-    return rounded == 0 ? value.ToString("G" + Math.Max(1, digits), CultureInfo.CurrentCulture)
-        : rounded.ToString("F" + digits, CultureInfo.CurrentCulture);
+    string formatted = (rounded == 0 ? 0d : rounded)
+        .ToString("F" + digits, CultureInfo.CurrentCulture);
+    if (digits == 0) {
+      return formatted;
+    }
+    string separator = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator;
+    string trimmed = formatted.TrimEnd('0');
+    return trimmed.EndsWith(separator, StringComparison.Ordinal)
+        ? trimmed[..^separator.Length] : trimmed;
   }
 
   private void updateErrors() => errorText.Text = string.Join("\n",

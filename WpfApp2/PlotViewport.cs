@@ -48,6 +48,26 @@ public sealed record PlotViewport(double left, double right, double bottom, doub
     return new PlotViewport(left, right, lower - padding, upper + padding);
   }
 
+  public PlotViewport withEqualScale(double width, double height) {
+    double xScale = (right - left) / width;
+    double yScale = (top - bottom) / height;
+    var expanded = centeredAtScale(Math.Max(xScale, yScale), width, height);
+    if (expanded.usable) {
+      return expanded;
+    }
+    var cropped = centeredAtScale(Math.Min(xScale, yScale), width, height);
+    return cropped.usable ? cropped : this;
+  }
+
+  private PlotViewport centeredAtScale(double scale, double width, double height) {
+    double centerX = left + (right - left) / 2;
+    double centerY = bottom + (top - bottom) / 2;
+    double halfWidth = scale * (width / 2);
+    double halfHeight = scale * (height / 2);
+    return new PlotViewport(centerX - halfWidth, centerX + halfWidth,
+        centerY - halfHeight, centerY + halfHeight);
+  }
+
   public PlotViewport zoom(double factor, double horizontal, double vertical) {
     double anchorX = left + (right - left) * Math.Clamp(horizontal, 0, 1);
     double anchorY = top - (top - bottom) * Math.Clamp(vertical, 0, 1);

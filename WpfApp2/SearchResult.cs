@@ -23,6 +23,12 @@ public enum SearchPointKind {
 public sealed record SearchResult(double x, double y) {
   public bool hasSolution => outcome is SearchOutcome.ROOT or SearchOutcome.MINIMUM
       or SearchOutcome.MAXIMUM;
+  public IReadOnlyList<NewtonStep> visibleSteps =>
+      usesTangents && hasSolution ? steps : Array.Empty<NewtonStep>();
+  public bool usesTangents {
+    get;
+    init;
+  }
   public SearchPointKind pointKind {
     get;
     init;

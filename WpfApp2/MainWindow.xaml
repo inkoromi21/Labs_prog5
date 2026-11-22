@@ -87,7 +87,7 @@
             <ColumnDefinition Width="100"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
           </Grid.ColumnDefinitions>
           <StackPanel>
-            <Label Content="Знаков после ," ToolTip="Число знаков для вывода; внутренняя точность поиска от него не зависит" Target="{Binding ElementName=digitsText}"/>
+            <Label Content="Знаков после ," ToolTip="Точность координаты x для метода Ньютона и вывода" Target="{Binding ElementName=digitsText}"/>
             <TextBox x:Name="digitsText" Text="3" TextChanged="onInputChanged"
                 AutomationProperties.Name="Знаков после запятой"/>
           </StackPanel>
@@ -137,9 +137,7 @@
         <Border Grid.Row="1" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0"
             Margin="0,10,0,0" Padding="0,12,0,0">
           <Grid>
-            <Grid.RowDefinitions>
-              <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="118"/>
               <ColumnDefinition Width="*"/>
@@ -147,16 +145,14 @@
               <ColumnDefinition Width="*"/>
               <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <TextBlock x:Name="stepDetailText" Grid.ColumnSpan="5" TextWrapping="Wrap"
-                Foreground="#6B7280" Margin="0,0,0,8"/>
-            <Button Grid.Row="1" x:Name="previousButton" Content="← Назад" IsEnabled="False"
+            <Button x:Name="previousButton" Content="← Назад" IsEnabled="False"
                 Click="onPreviousClick"/>
-            <TextBlock Grid.Row="1" x:Name="stepText" Grid.Column="1" Text="Шаг —"
+            <TextBlock x:Name="stepText" Grid.Column="1" Text="Шаг —"
                 VerticalAlignment="Center" HorizontalAlignment="Center"
                 AutomationProperties.LiveSetting="Polite"/>
-            <Button Grid.Row="1" x:Name="nextButton" Grid.Column="2" Content="Далее →"
+            <Button x:Name="nextButton" Grid.Column="2" Content="Далее →"
                 IsEnabled="False" Click="onNextClick"/>
-            <Button Grid.Row="1" x:Name="lastButton" Grid.Column="4" Content="К результату"
+            <Button Grid.Column="4" x:Name="lastButton" Content="К результату"
                 IsEnabled="False" Click="onLastClick"/>
           </Grid>
         </Border>
